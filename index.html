@@ -299,6 +299,7 @@ tfoot td { font-weight: 600; background: var(--surface-2); }
     <label class="eyebrow" for="clinicSelect">Clinic</label>
     <select id="clinicSelect" aria-label="Saved clinics"></select>
     <button class="btn primary" id="newClinic" type="button">New clinic</button>
+    <button class="btn" type="button" data-report="1">Download report</button>
     <button class="btn" id="exportBtn" type="button">Export</button>
     <button class="btn" id="importBtn" type="button">Import</button>
     <button class="btn ghost danger" id="deleteBtn" type="button">Delete</button>
@@ -331,6 +332,8 @@ tfoot td { font-weight: 600; background: var(--surface-2); }
 
 <div class="toast" id="toast" hidden></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
 (() => {
 "use strict";
@@ -758,13 +761,15 @@ const BODIES = {
           ${field("decision.next", "Outcome of this call", { type: "select", options: [["call2", "Book Call 2: revenue opportunity"], ["pilot", "Start a pilot"], ["proposal", "Send proposal"], ["data", "Need more data from clinic"], ["nofit", "Not a fit right now"]] })}
           ${field("decision.when", "Next meeting date", { type: "date" })}
           ${field("decision.who", "Who must attend", { type: "text", ph: "Owner, partner, front-desk lead" })}
+          ${field("decision.rep", "Report prepared by", { type: "text", ph: "Your name, PatientCurve" })}
           ${field("decision.budget", "Budget / investment appetite", { type: "text" })}
           ${field("decision.capture", "Share of the opportunity to promise in 90 days", { pct: true })}
           ${field("decision.objections", "Objections and open questions", { type: "textarea", wide: true })}
         </div></div>
       <div class="group"><h3>Call summary</h3>
         <div class="summary-box" id="summary"></div>
-        <div class="row-btns"><button class="btn primary" type="button" id="copySummary">Copy summary</button></div>
+        <div class="row-btns"><button class="btn primary" type="button" data-report="1">Download clinic report (PDF)</button><button class="btn" type="button" id="copySummary">Copy summary</button></div>
+        <p class="hint" style="margin:0;color:var(--muted);font-size:13.5px">A branded PatientCurve report for the clinic: goal, funnel leaks, ranked opportunities, recommendation and next steps.</p>
       </div>`;
   },
 };
@@ -1033,6 +1038,7 @@ document.addEventListener("click", e => {
   if (t.dataset.excl) { const s = S(); s.excluded = s.excluded || {}; s.excluded[t.dataset.excl] = !s.excluded[t.dataset.excl]; save(); refreshLive(); renderRail(); return; }
   if (t.dataset.delTx != null) { S().treatments.splice(+t.dataset.delTx, 1); save(); renderSheet(); return; }
   if (t.id === "addTx") { S().treatments.push({ name: "", consults: "", starts: "", value: "" }); save(); renderSheet(); const i = S().treatments.length - 1; const el = $("tx_n_" + i); if (el) el.focus(); return; }
+  if (t.dataset.report) { downloadReport(t); return; }
   if (t.id === "copySummary") { copy(buildSummary(), "Summary copied"); return; }
 });
 function go(i) {
@@ -1115,6 +1121,215 @@ function fallbackCopy(text, msg) {
 }
 let toastT;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2200); }
+
+/* ---------- Branded PDF report ---------- */
+// Standard PDF fonts cannot draw ₹ or arrows, so the report spells currency as "Rs".
+const P = s => String(s ?? "").replace(/₹/g, "Rs ").replace(/→/g, "->").replace(/−/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[^\x00-\xFF–—•]/g, "");
+const inrP = v => P(inr(v));
+const C = { accent: [11, 122, 106], ink: [18, 33, 31], muted: [90, 107, 104], line: [214, 223, 220], soft: [220, 239, 235], money: [168, 98, 11], moneySoft: [251, 239, 217], leak: [192, 57, 43], leakSoft: [251, 227, 223], paper: [246, 249, 248] };
+
+function buildReportPdf() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const s = S(), c = s.clinic, d = s.decision;
+  const W = 210, M = 16, CW = W - 2 * M;
+  let y = 0;
+  const color = (k, fn = "setTextColor") => doc[fn](...C[k]);
+  const ensure = h => { if (y + h > 280) { doc.addPage(); y = 20; } };
+  const heading = (txt, sub) => {
+    ensure(22); y += 4;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13); color("ink"); doc.text(P(txt), M, y);
+    if (sub) { doc.setFont("helvetica", "normal"); doc.setFontSize(9); color("muted"); doc.text(P(sub), W - M, y, { align: "right" }); }
+    y += 2.5; doc.setDrawColor(...C.accent); doc.setLineWidth(0.6); doc.line(M, y, M + 14, y); y += 5;
+  };
+  const para = (txt, size = 10, col = "ink") => {
+    doc.setFont("helvetica", "normal"); doc.setFontSize(size); color(col);
+    const lines = doc.splitTextToSize(P(txt), CW); ensure(lines.length * size * 0.42 + 2);
+    doc.text(lines, M, y); y += lines.length * size * 0.42 + 2;
+  };
+  const table = (head, body, opts = {}) => {
+    doc.autoTable(Object.assign({
+      startY: y, head: [head.map(P)], body: body.map(r => r.map(P)), margin: { left: M, right: M },
+      theme: "plain", styles: { font: "helvetica", fontSize: 9, cellPadding: 2.2, textColor: C.ink, lineColor: C.line, lineWidth: { bottom: 0.2 } },
+      headStyles: { fillColor: C.paper, textColor: C.muted, fontStyle: "bold", fontSize: 8 },
+    }, opts, {
+      didParseCell: h => {
+        const cs = (opts.columnStyles || {})[h.column.index];
+        if (h.section === "head" && cs && cs.halign) h.cell.styles.halign = cs.halign;
+        if (opts.didParseCell) opts.didParseCell(h);
+      },
+    }));
+    y = doc.lastAutoTable.finalY + 6;
+  };
+
+  // Cover band
+  doc.setFillColor(...C.ink); doc.rect(0, 0, W, 46, "F");
+  doc.setFillColor(...C.accent); doc.rect(0, 46, W, 1.6, "F");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
+  doc.text("PatientCurve", M, 14);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(170, 205, 198);
+  doc.text("REVENUE INTELLIGENCE", M + doc.getTextWidth("PatientCurve") * 11 / 8.5 + 3, 14);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(21); doc.setTextColor(255, 255, 255);
+  doc.text("Revenue Opportunity Report", M, 28);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10.5); doc.setTextColor(214, 232, 228);
+  doc.text(P(`${c.name || "Clinic"}${c.city ? " · " + c.city : ""}`).replace("·", "-"), M, 37);
+  doc.setFontSize(8.5); doc.setTextColor(170, 205, 198);
+  const meta = [c.date ? "Diagnostic call: " + c.date : "", c.contact ? "Prepared for: " + c.contact : "", d.rep ? "Prepared by: " + d.rep : ""].filter(Boolean).join("   |   ");
+  doc.text(P(meta), M, 42.5);
+  y = 58;
+
+  // Headline numbers
+  const boxW = (CW - 8) / 3, boxH = 25;
+  const cover = R.goalGap ? R.totalCons / R.goalGap : NaN;
+  [
+    ["RECOVERABLE REVENUE", inrP(R.totalCons) + " /mo", inrP(R.totalCons * 12) + " a year", "moneySoft", "money"],
+    ["REVENUE GOAL", R.desRev ? inrP(R.desRev) + " /mo" : "-", R.curRev ? "from " + inrP(R.curRev) + " /mo today" : "", "paper", "ink"],
+    ["SHARE OF GOAL GAP", Number.isFinite(cover) ? pct(cover) : "-", R.goalGap ? "of the " + inrP(R.goalGap) + " /mo gap" : "", "soft", "accent"],
+  ].forEach(([lbl, big, sub, bg, fg], i) => {
+    const x = M + i * (boxW + 4);
+    doc.setFillColor(...C[bg]); doc.roundedRect(x, y, boxW, boxH, 2, 2, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(7); color("muted"); doc.text(lbl, x + 4, y + 6);
+    doc.setFontSize(15); color(fg); doc.text(big, x + 4, y + 15);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); color("muted"); doc.text(sub, x + 4, y + 21);
+  });
+  y += boxH + 6;
+  para("Recoverable revenue comes from the clinic's existing enquiries, patients and database, without new marketing spend. Overlapping opportunities are counted once.", 8.5, "muted");
+
+  // Diagnosis
+  const multi = multipleProblems();
+  if (R.top) {
+    const iv = multi ? "Revenue operating system" : R.top.iv;
+    const diag = multi ? "Multiple revenue leaks" : R.top.diag;
+    const body = `Start with ${R.top.t.toLowerCase()}: ${R.top.pc}.` + (multi ? ` Then add ${R.active.slice(1, 3).map(o => o.t.toLowerCase()).join(" and ")}.` : "");
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+    const lines = doc.splitTextToSize(P(body), CW - 10);
+    const h = 18 + lines.length * 4.4;
+    ensure(h + 4);
+    doc.setFillColor(...C.soft); doc.roundedRect(M, y, CW, h, 2, 2, "F");
+    doc.setFillColor(...C.accent); doc.rect(M, y, 1.4, h, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); color("accent"); doc.text(P("DIAGNOSIS: " + diag.toUpperCase()), M + 6, y + 6.5);
+    doc.setFontSize(13.5); color("ink"); doc.text(P(iv), M + 6, y + 13);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(lines, M + 6, y + 19);
+    y += h + 6;
+  }
+
+  // Funnel
+  heading("Patient revenue funnel", "per month");
+  const fBody = R.stages.map(([lbl], i) => {
+    if (i === 0) return [lbl, fmtN(R.vals[0]), "", "", ""];
+    const j = i - 1, cv = R.conv[j];
+    return [lbl, fmtN(R.vals[i]), pct(cv), pct(R.tgt[j]), R.gain[j] > 0 ? inrP(R.gain[j]) : "On target"];
+  });
+  table(["Stage", "Volume", "Conversion", "Target", "Revenue leak / mo"], fBody, {
+    columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" } },
+    didParseCell: h => { if (h.section === "body" && R.leakIdx >= 0 && h.row.index === R.leakIdx + 1) { h.cell.styles.fillColor = C.leakSoft; if (h.column.index === 4) { h.cell.styles.textColor = C.leak; h.cell.styles.fontStyle = "bold"; } } },
+  });
+  para(`Average treatment value ${inrP(R.atv)}. New-patient treatment revenue ${inrP(R.newRev)} a month; each enquiry is worth ${R.vals[0] ? inrP(R.newRev / R.vals[0]) : "-"} today.` + (R.leakIdx >= 0 ? ` Biggest leak: ${R.convNames[R.leakIdx]}, ${inrP(R.gain[R.leakIdx])} a month.` : ""), 9, "muted");
+
+  // Opportunities
+  heading("Ranked revenue opportunities", "per month / per year");
+  table(["#", "Opportunity", "Problem", "Per month", "Per year"],
+    R.active.map((o, i) => [String(i + 1), o.t, o.diag, inrP(o.m), inrP(o.m * 12)]), {
+      columnStyles: { 0: { cellWidth: 8, fontStyle: "bold", textColor: C.accent }, 1: { fontStyle: "bold" }, 3: { halign: "right", textColor: C.money, fontStyle: "bold" }, 4: { halign: "right" } },
+      didParseCell: h => { if (h.section === "body" && h.row.index === 0) h.cell.styles.fillColor = C.soft; },
+    });
+  para("Ranked on revenue potential, confidence in the evidence, cost, speed to results, difficulty and whether the clinic has capacity to deliver. 'More qualified enquiries' needs new marketing spend and is not counted in recoverable revenue.", 8.5, "muted");
+
+  // Database
+  heading("Revenue inside the existing database", "one-time pool");
+  const db = s.db;
+  table(["Source", "Patients", "Assumption", "Value"], [
+    ["Inactive patients returning", fmtN(db.inactive), `${db.reactRate || 0}% x ${inrP(db.retVal)}`, inrP(R.dbReact)],
+    ["Overdue recalls booking", fmtN(db.overdue), `${db.recallRate || 0}% x ${inrP(db.retVal)}`, inrP(R.dbRecall)],
+    ["Pending and incomplete treatments", fmtN(n(db.pending) + n(db.incomplete)), `${db.pendRate || 0}% x ${inrP(R.atv)}`, inrP(R.dbPending)],
+    ["Total", "", "", inrP(R.dbPool)],
+  ], { columnStyles: { 1: { halign: "right" }, 3: { halign: "right", fontStyle: "bold" } }, didParseCell: h => { if (h.section === "body" && h.row.index === 3) { h.cell.styles.fillColor = C.moneySoft; h.cell.styles.fontStyle = "bold"; } } });
+
+  // Treatments
+  const tx = R.tx.filter(t => t.c > 0 || t.st > 0);
+  if (tx.length) {
+    heading("High-value treatment mix", `+${s.hvLift || 0} points acceptance tested`);
+    table(["Treatment", "Consults", "Starts", "Acceptance", "Revenue / mo", "If lifted"],
+      tx.map(t => [t.name, fmtN(t.c), fmtN(t.st), pct(t.acc), inrP(t.rev), t.extra ? "+" + inrP(t.extra) : "-"]),
+      { columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right", textColor: C.money } } });
+  }
+
+  // Capacity + systems
+  heading("Capacity and current systems");
+  const capText = { under: "Chairs are under-used, so the clinic can absorb more demand.", balanced: "Chairs are moderately used. Fix conversion before buying more leads.", full: "Chairs are full. Growth should come from revenue per patient, treatment mix and off-peak slots.", unknown: "Capacity was not captured." }[R.capVerdict];
+  para(`Chair utilisation ${pct(R.util)} (${fmtN(s.capacity.booked)} of ${fmtN(R.slots)} appointment slots a month). ${capText}`, 10);
+  const sysRows = SYSTEMS.filter(([k]) => s.systems[k]).map(([k, l]) => [l, STATE_LABEL[s.systems[k]]]);
+  if (sysRows.length) {
+    const half = Math.ceil(sysRows.length / 2);
+    const rows = Array.from({ length: half }, (_, i) => [...sysRows[i], ...(sysRows[i + half] || ["", ""])]);
+    const tint = h => { if (h.section === "body" && (h.column.index === 1 || h.column.index === 3)) { const v = h.cell.raw; h.cell.styles.fontStyle = "bold"; h.cell.styles.textColor = v === "None" ? C.leak : v === "Manual" ? C.money : C.accent; } };
+    table(["Patient journey step", "Today", "Patient journey step", "Today"], rows, { didParseCell: tint });
+  }
+  if (s.tried) para("Already tried: " + s.tried, 9, "muted");
+
+  // Plan
+  heading("The plan");
+  const capture = n(d.capture) / 100;
+  if (R.top) {
+    [["Bottleneck", R.top.why], ["Solution", R.top.pc + "."],
+     ["Expected outcome", `Recovering ${pct(capture)} of the opportunity in the first 90 days: about ${inrP(R.top.m * capture)} a month from ${R.top.t.toLowerCase()}, and ${inrP(R.totalCons * capture)} a month across all recoverable opportunities.`]]
+      .forEach(([k, v]) => {
+        doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+        const lines = doc.splitTextToSize(P(v), CW - 38); ensure(lines.length * 4.4 + 4);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(8); color("accent"); doc.text(k.toUpperCase(), M, y);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(10); color("ink"); doc.text(lines, M + 38, y);
+        y += lines.length * 4.4 + 3;
+      });
+  }
+  const NEXT = { call2: "Revenue opportunity review (Call 2)", pilot: "Start a pilot", proposal: "Proposal to follow", data: "Clinic to share additional data", nofit: "Revisit at a later date" };
+  y += 2;
+  const nextLine = `${NEXT[d.next] || "-"}${d.when ? " on " + d.when : ""}${d.who ? ", with " + d.who : ""}.`;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8); color("accent"); ensure(10); doc.text("NEXT STEP", M, y);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); color("ink"); doc.text(doc.splitTextToSize(P(nextLine), CW - 38), M + 38, y);
+  y += 10;
+  para("Figures are estimates built from numbers shared by the clinic during the diagnostic call and the assumptions shown. They indicate the size of each opportunity and are not a guarantee of results.", 8, "muted");
+
+  // Footer on every page
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(...C.line); doc.setLineWidth(0.2); doc.line(M, 287, W - M, 287);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); color("muted");
+    doc.text("PatientCurve - Revenue Intelligence  |  Find money first.", M, 291.5);
+    doc.text(`${P(c.name || "Clinic")}  |  Page ${i} of ${pages}`, W - M, 291.5, { align: "right" });
+  }
+  return doc;
+}
+
+function reportFilename() {
+  const name = (S().clinic.name || "Clinic").replace(/^Sample:\s*/, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || "Clinic";
+  return `PatientCurve-Revenue-Report-${name}-${S().clinic.date || new Date().toISOString().slice(0, 10)}.pdf`;
+}
+
+let reportBusy = false;
+async function downloadReport(btn) {
+  if (reportBusy) return;
+  if (!window.jspdf || !window.jspdf.jsPDF || !window.jspdf.jsPDF.API.autoTable) { toast("Report library did not load. Check the connection and reload."); return; }
+  reportBusy = true; const label = btn.textContent; btn.textContent = "Preparing…"; btn.disabled = true;
+  try {
+    R = calc(S());
+    const doc = buildReportPdf(), filename = reportFilename();
+    const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(() => null) : null;
+    if (dl) {
+      try { await dl.save({ filename, data: doc.output("blob") }); toast("Report saved"); }
+      catch (e) {
+        const code = e && e.code;
+        if (code === "declined") toast("Download cancelled");
+        else if (code === "rate_limited") toast("A save prompt is already open");
+        else { doc.save(filename); }
+      }
+    } else {
+      doc.save(filename); toast("Report downloaded");
+    }
+  } catch (e) {
+    toast("Could not build the report: " + (e && e.message ? e.message : "unknown error"));
+  } finally { reportBusy = false; btn.textContent = label; btn.disabled = false; }
+}
 
 /* Boot */
 load();

@@ -11,4 +11,4 @@ A single-page sales-call tool built from the *Dental Clinic Revenue Growth Strat
 7. **Opportunity map**: every opportunity sized in ₹ and ranked on revenue, confidence, cost, speed, difficulty and capacity
 8. **Decision & next call**: recommended intervention, Call 2 storyline and a copyable call summary
 
-Each step lists the questions to ask and has a notes box. Data is saved in the browser (localStorage) per clinic; use **Export / Import** to move a clinic between devices or into a CRM.
+Each step lists the questions to ask and has a notes box. After the call, **Download report** creates a branded PatientCurve PDF for the clinic (goal, funnel leaks, ranked opportunities, database value, capacity, systems, recommendation and next step). Data is saved in the browser (localStorage) per clinic; use **Export / Import** to move a clinic between devices or into a CRM.
