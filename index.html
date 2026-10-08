@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PatientCurve Revenue Diagnostic</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: call cockpit. Step rail (left) → working sheet (centre) → live "money found" ledger (right). Stacks on phones. */
+:root {
+  --bg: #eef2f1;
+  --surface: #ffffff;
+  --surface-2: #f6f9f8;
+  --ink: #12211f;
+  --muted: #5a6b68;
+  --line: #d6dfdc;
+  --accent: #0b7a6a;
+  --accent-soft: #dcefeb;
+  --money: #a8620b;
+  --money-soft: #fbefd9;
+  --leak: #c0392b;
+  --leak-soft: #fbe3df;
+  --ok: #217a3c;
+  --ok-soft: #dff1e4;
+  --warn: #9a6b00;
+  --warn-soft: #fbf0cf;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1514; --surface: #15201e; --surface-2: #1b2826; --ink: #e5eeec; --muted: #93a6a2;
+    --line: #2a3a37; --accent: #3fc1aa; --accent-soft: #163a34; --money: #e9a945; --money-soft: #3a2c14;
+    --leak: #ef7b6c; --leak-soft: #3d1f1b; --ok: #6bcf88; --ok-soft: #173321; --warn: #e3b84d; --warn-soft: #3a3115;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1514; --surface: #15201e; --surface-2: #1b2826; --ink: #e5eeec; --muted: #93a6a2;
+  --line: #2a3a37; --accent: #3fc1aa; --accent-soft: #163a34; --money: #e9a945; --money-soft: #3a2c14;
+  --leak: #ef7b6c; --leak-soft: #3d1f1b; --ok: #6bcf88; --ok-soft: #173321; --warn: #e3b84d; --warn-soft: #3a3115;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 15px/1.5 var(--f-body);
+  padding-inline: 16px; padding-block: 0 48px;
+}
+[hidden] { display: none !important; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num, input[type="number"] { font-variant-numeric: tabular-nums; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+.eyebrow { font: 500 11px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* Top bar */
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+  margin-inline: -16px; padding: 10px 16px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+}
+.brand { display: flex; flex-direction: column; gap: 2px; margin-right: auto; min-width: 0; }
+.brand h1 { font-size: 19px; font-weight: 700; }
+.brand h1 span { color: var(--accent); }
+.clinic-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.clinic-pick select { max-width: 220px; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 7px 12px; cursor: pointer; font-weight: 500; font-size: 14px; white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn.ghost { background: transparent; }
+.btn.danger:hover { border-color: var(--leak); color: var(--leak); }
+.btn.sm { padding: 4px 9px; font-size: 13px; }
+
+.sample-note {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+  background: var(--warn-soft); color: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 10px 14px; margin-top: 14px; font-size: 14px;
+}
+.sample-note strong { color: var(--warn); }
+
+/* Shell */
+.shell {
+  display: grid; gap: 20px; margin-top: 18px;
+  grid-template-columns: 210px minmax(0, 1fr) 300px; align-items: start;
+  max-width: 1440px; margin-inline: auto;
+}
+@media (max-width: 1180px) { .shell { grid-template-columns: 190px minmax(0, 1fr); } .ledger { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .shell { grid-template-columns: minmax(0, 1fr); } }
+
+/* Step rail */
+.rail { position: sticky; top: 76px; display: flex; flex-direction: column; gap: 2px; }
+.rail button {
+  display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center;
+  text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  color: var(--muted);
+}
+.rail button .n {
+  width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line);
+  display: grid; place-items: center; font: 500 12px var(--f-mono); background: var(--surface);
+}
+.rail button .t { font-weight: 500; font-size: 14px; }
+.rail button .d { width: 7px; height: 7px; border-radius: 50%; background: transparent; }
+.rail button.done .d { background: var(--ok); }
+.rail button:hover { background: var(--surface); color: var(--ink); }
+.rail button.on { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.rail button.on .n { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.rail .principle {
+  margin-top: 14px; padding: 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted);
+}
+.rail .principle b { display: block; color: var(--ink); font-family: var(--f-display); font-size: 15px; margin-bottom: 4px; }
+@media (max-width: 760px) {
+  .rail { position: static; flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 4px; }
+  .rail button { grid-template-columns: 22px auto; flex: 0 0 auto; }
+  .rail button .d, .rail .principle { display: none; }
+}
+
+/* Sheet */
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; min-width: 0; }
+@media (max-width: 520px) { .sheet { padding: 16px; } }
+.step-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: flex-end; margin-bottom: 18px; }
+.step-head h2 { font-size: 28px; font-weight: 700; margin-top: 6px; }
+.step-head p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
+.step-body { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; }
+@media (max-width: 980px) { .step-body { grid-template-columns: minmax(0, 1fr); } }
+.work { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+
+.ask { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; align-self: start; }
+.ask h3 { font-size: 15px; margin-bottom: 8px; }
+.ask ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.ask label { display: block; margin-top: 14px; }
+.ask textarea { min-height: 110px; }
+
+.group { display: flex; flex-direction: column; gap: 10px; }
+.group > h3 { font-size: 17px; font-weight: 700; }
+.group > .hint { margin: -6px 0 0; color: var(--muted); font-size: 13.5px; }
+.fields { display: grid; gap: 12px 16px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field > span { font-size: 13px; font-weight: 500; color: var(--muted); }
+.field.wide { grid-column: 1 / -1; }
+input[type="text"], input[type="number"], input[type="date"], select, textarea {
+  width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 10px;
+}
+textarea { resize: vertical; min-height: 64px; }
+input:hover, select:hover, textarea:hover { border-color: var(--muted); }
+.money-in { position: relative; }
+.money-in::before { content: "₹"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; }
+.money-in input { padding-left: 24px; }
+.pct-in { position: relative; }
+.pct-in::after { content: "%"; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; }
+.pct-in input { padding-right: 26px; }
+
+.callout { border-radius: var(--r); padding: 12px 14px; border: 1px solid var(--line); background: var(--surface-2); font-size: 14px; }
+.callout.money { background: var(--money-soft); border-color: transparent; }
+.callout.leak { background: var(--leak-soft); border-color: transparent; }
+.callout.ok { background: var(--ok-soft); border-color: transparent; }
+.callout.warn { background: var(--warn-soft); border-color: transparent; }
+.callout b.big { font: 600 22px/1.2 var(--f-mono); display: block; margin-top: 2px; }
+
+.stats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.stat { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
+.stat .v { font: 600 20px/1.2 var(--f-mono); margin-top: 6px; }
+.stat .s { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+/* Funnel */
+.funnel { display: flex; flex-direction: column; gap: 0; }
+.f-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 90px; gap: 12px; align-items: center; padding: 6px 0; }
+.f-row .lbl { font-weight: 500; font-size: 14px; }
+.f-row .bar-wrap { height: 30px; background: var(--surface-2); border-radius: 6px; overflow: hidden; }
+.f-row .bar { height: 100%; background: var(--accent); border-radius: 6px; min-width: 2px; transition: width .25s ease; }
+.f-row input { text-align: right; }
+.f-gap { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; padding: 2px 0; }
+.f-gap .conv { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.f-gap .conv .pctv { font: 600 13px var(--f-mono); color: var(--ink); }
+.f-gap .tgt { display: inline-flex; align-items: center; gap: 4px; }
+.f-gap .tgt input { width: 64px; padding: 2px 6px; font-size: 13px; }
+@media (max-width: 560px) {
+  .f-row { grid-template-columns: 1fr 96px; }
+  .f-row .bar-wrap { grid-column: 1 / -1; grid-row: 2; height: 18px; }
+  .f-gap { grid-template-columns: 1fr; }
+  .f-gap > span:first-child { display: none; }
+}
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill.leak { background: var(--leak-soft); color: var(--leak); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.money { background: var(--money-soft); color: var(--money); }
+.pill.neutral { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+.pill.accent { background: var(--accent-soft); color: var(--accent); }
+
+/* Tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font: 500 11px var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.r, th.r { text-align: right; }
+td input { min-width: 80px; }
+td input.name { min-width: 150px; }
+tfoot td { font-weight: 600; background: var(--surface-2); }
+
+/* Systems */
+.sys-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r); }
+.sys { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.sys:last-child { border-bottom: 0; }
+.sys .nm { font-weight: 500; font-size: 14px; }
+.sys .nm small { display: block; color: var(--muted); font-weight: 400; font-size: 12.5px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 5px 10px; cursor: pointer; font-size: 13px; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on[data-v="none"] { background: var(--leak-soft); color: var(--leak); font-weight: 600; }
+.seg button.on[data-v="manual"] { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+.seg button.on[data-v="auto"] { background: var(--ok-soft); color: var(--ok); font-weight: 600; }
+.seg.score button { min-width: 30px; padding: 4px 8px; font-family: var(--f-mono); }
+.seg.score button.on { background: var(--accent); color: var(--surface); font-weight: 600; }
+@media (max-width: 520px) { .sys { grid-template-columns: 1fr; } }
+
+/* Opportunities */
+.opps { display: flex; flex-direction: column; gap: 12px; }
+.opp { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 6px 14px; }
+.opp.top { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.opp .rank { font: 700 22px/1 var(--f-display); color: var(--muted); padding-top: 2px; }
+.opp.top .rank { color: var(--accent); }
+.opp .title { font-weight: 600; font-size: 15.5px; }
+.opp .why { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+.opp .chips .pill { white-space: normal; }
+.opp .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.opp .val { text-align: right; }
+.opp .val .m { font: 600 19px/1.2 var(--f-mono); color: var(--money); }
+.opp .val .y { font-size: 12.5px; color: var(--muted); }
+.opp .val .sc { margin-top: 6px; font: 500 12px var(--f-mono); color: var(--muted); }
+.opp .factors { grid-column: 2 / -1; display: grid; gap: 8px 16px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.opp .factors .f { display: flex; flex-direction: column; gap: 4px; }
+.opp .factors .f > span { font-size: 12px; color: var(--muted); }
+.opp.excluded { opacity: .55; }
+@media (max-width: 560px) {
+  .opp { grid-template-columns: 28px minmax(0, 1fr); }
+  .opp .val { grid-column: 2; text-align: left; }
+  .opp .factors { grid-column: 1 / -1; }
+}
+
+/* Decision */
+.story { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); counter-reset: s; }
+.story .card { border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; background: var(--surface-2); }
+.story .card .eyebrow { display: block; margin-bottom: 6px; }
+.story .card p { margin: 0; font-size: 14px; }
+.verdict { border-radius: 14px; padding: 18px 20px; background: var(--accent-soft); display: grid; gap: 6px; }
+.verdict h3 { font-size: 22px; }
+.verdict .pos { font-size: 14.5px; }
+.summary-box { font: 13px/1.55 var(--f-mono); white-space: pre-wrap; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; max-height: 360px; overflow: auto; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.step-foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+/* Ledger */
+.ledger { position: sticky; top: 76px; display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 1180px) { .ledger { position: static; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); } }
+.lcard { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.lcard.found { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.lcard.found .eyebrow { color: var(--bg); opacity: .7; }
+.lcard.found .big { font: 600 30px/1.1 var(--f-mono); margin-top: 8px; color: var(--money-soft); }
+.lcard.found .sub { font-size: 13px; opacity: .8; margin-top: 4px; }
+.gapbar { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--bg) 25%, transparent); margin-top: 12px; overflow: hidden; }
+.gapbar i { display: block; height: 100%; background: var(--money); border-radius: 4px; }
+.lrow { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; padding: 5px 0; border-bottom: 1px dashed var(--line); }
+.lrow:last-child { border-bottom: 0; }
+.lrow span:first-child { color: var(--muted); }
+.lrow span:last-child { font-family: var(--f-mono); font-weight: 500; text-align: right; }
+.lcard h3 { font-size: 15px; margin-bottom: 8px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 14px; z-index: 50;
+}
+.modal-back { position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 45%, transparent); z-index: 40; display: grid; place-items: center; padding: 16px; }
+.modal { background: var(--surface); border-radius: 14px; padding: 20px; width: min(560px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.modal textarea { min-height: 180px; font: 12.5px var(--f-mono); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="eyebrow">PatientCurve · Revenue Intelligence</span>
+    <h1>Revenue <span>Diagnostic</span></h1>
+  </div>
+  <div class="clinic-pick">
+    <label class="eyebrow" for="clinicSelect">Clinic</label>
+    <select id="clinicSelect" aria-label="Saved clinics"></select>
+    <button class="btn primary" id="newClinic" type="button">New clinic</button>
+    <button class="btn" id="exportBtn" type="button">Export</button>
+    <button class="btn" id="importBtn" type="button">Import</button>
+    <button class="btn ghost danger" id="deleteBtn" type="button">Delete</button>
+  </div>
+</header>
+
+<div class="sample-note" id="sampleNote" hidden>
+  <span><strong>Sample clinic.</strong> These figures are illustrative, taken from the strategy document. Start a new clinic before the call.</span>
+  <button class="btn sm" type="button" id="sampleNew">Start a new clinic</button>
+</div>
+
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Diagnostic steps"></nav>
+  <main class="sheet" id="sheet"></main>
+  <aside class="ledger" id="ledger" aria-label="Live summary"></aside>
+</div>
+
+<div class="modal-back" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h3 id="modalTitle">Import</h3>
+    <p id="modalText" style="margin:0;color:var(--muted);font-size:14px"></p>
+    <textarea id="modalArea" aria-label="Clinic data"></textarea>
+    <input type="file" id="modalFile" accept="application/json,.json">
+    <div class="row-btns" style="justify-content:flex-end">
+      <button class="btn" type="button" id="modalCancel">Close</button>
+      <button class="btn primary" type="button" id="modalOk">Import</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+"use strict";
+
+/* ---------- Formatting ---------- */
+const n = v => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+function inr(v, opts = {}) {
+  v = Math.round(n(v));
+  const s = v < 0 ? "−" : ""; const a = Math.abs(v);
+  if (a >= 1e7) return s + "₹" + trim(a / 1e7, 2) + " Cr";
+  if (a >= 1e5) return s + "₹" + trim(a / 1e5, 1) + "L";
+  return s + "₹" + a.toLocaleString("en-IN");
+}
+function trim(x, d) { return Number(x.toFixed(d)).toLocaleString("en-IN", { maximumFractionDigits: d }); }
+const pct = (v, d = 0) => (Number.isFinite(v) ? (v * 100).toFixed(d) + "%" : "—");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ratio = (a, b) => (n(b) > 0 ? n(a) / n(b) : NaN);
+
+/* ---------- Model ---------- */
+const SYSTEMS = [
+  ["enquiry", "New enquiry handling", "Who answers, how fast, after hours?", "lead"],
+  ["whatsapp", "WhatsApp conversations", "Shared inbox or a personal phone?", "lead"],
+  ["calls", "Calls", "Missed calls tracked and called back?", "lead"],
+  ["booking", "Appointment booking", "Online, phone, walk-in?", "noshow"],
+  ["reminders", "Reminders", "Day-before and same-day confirmation?", "noshow"],
+  ["noshow", "No-show recovery", "Same-day reschedule attempt?", "noshow"],
+  ["txfollow", "Treatment follow-up", "Undecided patients contacted after consult?", "acceptance"],
+  ["recall", "Recall", "6-month hygiene and check-up recalls?", "reactivation"],
+  ["reactivation", "Patient reactivation", "Lapsed patients ever contacted?", "reactivation"],
+  ["referrals", "Referrals", "Asked for, tracked, rewarded?", "referral"],
+  ["database", "Patient database", "Software in use, data clean?", "reactivation"],
+  ["reporting", "Reporting", "Funnel numbers visible each month?", "all"],
+];
+const STATE_LABEL = { none: "None", manual: "Manual", auto: "Systemised" };
+
+const STEPS = [
+  { id: "goal", t: "Clinic & goal", sec: "§3",
+    lead: "Capture where the clinic is today and where it wants to be. The gap is the number every later step is measured against.",
+    ask: ["What is your average monthly revenue today? Is it growing, flat or falling?", "What monthly revenue would make this year a success?", "By when, and why now? (new chair, partner, loan, second clinic)", "Which treatments bring in most of the revenue?"] },
+  { id: "funnel", t: "Patient funnel", sec: "§4–5",
+    lead: "Walk the new-patient journey and capture monthly volume at each stage. The biggest gap between actual and target conversion is the likely leakage.",
+    ask: ["How many enquiries per month across calls, WhatsApp, walk-ins, Google and ads?", "Of those, how many book an appointment?", "How many actually turn up for the consultation?", "How many accept a treatment plan, and how many start treatment?", "What does an average treatment course bill?"] },
+  { id: "database", t: "Existing patients", sec: "§6",
+    lead: "The patient database is an asset the clinic already paid to acquire. Estimate how much revenue is sitting inside it.",
+    ask: ["How many patients are in your software in total?", "How many visited in the last 12 months?", "How many are overdue for recall or cleaning?", "How many have treatment planned but not started, or started and not finished?", "How many new patients each month come from referrals?"] },
+  { id: "treatments", t: "High-value treatments", sec: "§7",
+    lead: "Look at revenue per patient, not patient volume. The clinic may not need more patients, it may need more of the right patients saying yes.",
+    ask: ["Which treatments do you most want to grow?", "How many implant / aligner / full-mouth consultations a month?", "How many of those go ahead?", "What stops patients saying yes: price, fear, time, second opinions?"] },
+  { id: "capacity", t: "Capacity", sec: "§8",
+    lead: "Before recommending more demand, check the clinic can fulfil it. Underused capacity means grow demand; full capacity means grow revenue per patient.",
+    ask: ["How many dentists and chairs, and what hours?", "Roughly how many appointments are booked per month?", "Do you have empty slots? When? Is there a waiting list?", "How many visits does a typical treatment take?"] },
+  { id: "systems", t: "Current systems", sec: "§9",
+    lead: "Mark each part of the patient journey as having no process, a manual one, or a systemised one. Gaps here are the evidence behind each leak.",
+    ask: ["Walk me through what happens when a new enquiry comes in on WhatsApp at 9 pm.", "What happens when someone does not show up?", "What happens after a patient says 'I'll think about it'?", "What have you already tried? What worked, what didn't?"] },
+  { id: "opps", t: "Opportunity map", sec: "§10–11",
+    lead: "Every leak translated into rupees, then ranked by revenue, confidence, cost, speed, difficulty and capacity fit. Adjust the 1–5 scores as you learn more.",
+    ask: ["If we could fix one thing in the next 90 days, which would you pick?", "How confident are you in these numbers?", "Who on your team would own this?"] },
+  { id: "decision", t: "Decision & next call", sec: "§12–14",
+    lead: "The diagnosis decides the intervention. Use this as the outline for Call 2: situation, bottleneck, financial impact, solution, expected outcome.",
+    ask: ["Does this match what you see day to day?", "If we recover this, what would it mean for your goal?", "Who else needs to be in the next conversation?", "What would stop you from moving forward?"] },
+];
+
+const OPP_DEFS = {
+  lead:        { t: "Lead response & recovery", diag: "Lead conversion problem", iv: "Lead response + recovery", pc: "Instant WhatsApp response, missed-call capture and automated lead follow-up until booked", demand: true, d: { confidence: 4, cost: 2, speed: 5, difficulty: 2 } },
+  noshow:      { t: "Appointment confirmation & no-show recovery", diag: "No-show problem", iv: "Appointment confirmation + recovery", pc: "Automated confirmations, reminders and same-day reschedule for no-shows", demand: false, d: { confidence: 4, cost: 1, speed: 5, difficulty: 1 } },
+  acceptance:  { t: "Treatment acceptance follow-up", diag: "Treatment acceptance problem", iv: "Treatment follow-up + conversion system", pc: "Structured follow-up for undecided patients: education, financing options, reminders", demand: false, d: { confidence: 3, cost: 2, speed: 4, difficulty: 3 } },
+  start:       { t: "Treatment start recovery", diag: "Treatment acceptance problem", iv: "Treatment follow-up + conversion system", pc: "Track accepted-but-not-started plans and chase them to a booked first sitting", demand: false, d: { confidence: 4, cost: 1, speed: 5, difficulty: 2 } },
+  reactivation:{ t: "Recall & patient reactivation", diag: "Inactive patient problem", iv: "Patient reactivation", pc: "Recall campaigns and reactivation sequences on the existing database", demand: true, d: { confidence: 3, cost: 1, speed: 4, difficulty: 2 } },
+  pending:     { t: "Pending & incomplete treatment recovery", diag: "Treatment acceptance problem", iv: "Treatment follow-up + conversion system", pc: "Work the list of planned and half-finished treatments back into the chair", demand: false, d: { confidence: 4, cost: 1, speed: 4, difficulty: 2 } },
+  highvalue:   { t: "High-value treatment conversion", diag: "Treatment acceptance problem", iv: "Treatment mix: conversion of high-value cases", pc: "Dedicated follow-up tracks for implants, aligners and full-mouth cases", demand: false, d: { confidence: 3, cost: 2, speed: 3, difficulty: 3 } },
+  referral:    { t: "Referral system", diag: "Referral problem", iv: "Referral system", pc: "Post-treatment referral asks, tracking and rewards", demand: true, d: { confidence: 2, cost: 1, speed: 2, difficulty: 2 } },
+  acquisition: { t: "More qualified enquiries", diag: "Acquisition problem", iv: "Marketing / lead generation", pc: "Lead generation into a funnel that already converts (PatientCurve tracks source to revenue)", demand: true, d: { confidence: 2, cost: 4, speed: 2, difficulty: 3 } },
+};
+
+function sampleState() {
+  return {
+    sample: true,
+    clinic: { name: "Sample: Smile Studio Dental", city: "Bengaluru", contact: "Dr. A. Rao (owner)", date: new Date().toISOString().slice(0, 10) },
+    goal: { cur: 2500000, des: 4000000, trend: "flat", timeline: "12 months", reason: "Added a third chair and an implantologist; loan repayments start in Q1.", ambition: "Become the go-to implant and aligner clinic in the area." },
+    funnel: { enq: 500, appt: 250, consult: 200, accepted: 100, starts: 80, atv: 25000, t1: 60, t2: 85, t3: 60, t4: 90 },
+    db: { total: 6000, active: 2200, inactive: 3800, overdue: 900, pending: 160, incomplete: 70, hvLapsed: 120, retVal: 6000, reactRate: 6, recallRate: 20, pendRate: 25, months: 12, refNow: 5, refTarget: 15 },
+    treatments: [
+      { name: "Implants", consults: 20, starts: 6, value: 45000 },
+      { name: "Aligners", consults: 12, starts: 3, value: 150000 },
+      { name: "Full-mouth rehabilitation", consults: 4, starts: 1, value: 300000 },
+      { name: "Veneers & cosmetic", consults: 10, starts: 3, value: 60000 },
+      { name: "Crowns & bridges", consults: 40, starts: 24, value: 12000 },
+    ],
+    hvLift: 10,
+    capacity: { dentists: 3, chairs: 3, hours: 9, days: 26, slot: 30, booked: 950, visits: 4, backlog: 2, peak: "Evenings and Saturdays full; weekday 11am–4pm mostly empty." },
+    systems: { enquiry: "manual", whatsapp: "manual", calls: "none", booking: "manual", reminders: "manual", noshow: "none", txfollow: "none", recall: "manual", reactivation: "none", referrals: "none", database: "manual", reporting: "none" },
+    tried: "Ran Google Ads for 3 months (₹40k/month): more calls, but bookings barely moved. Receptionist sends WhatsApp reminders from her own phone when she has time.",
+    scores: {}, excluded: {},
+    decision: { next: "call2", when: "", who: "", budget: "", objections: "", capture: 50 },
+    notes: {},
+  };
+}
+function blankState() {
+  return {
+    sample: false,
+    clinic: { name: "", city: "", contact: "", date: new Date().toISOString().slice(0, 10) },
+    goal: { cur: "", des: "", trend: "", timeline: "", reason: "", ambition: "" },
+    funnel: { enq: "", appt: "", consult: "", accepted: "", starts: "", atv: "", t1: 60, t2: 85, t3: 60, t4: 90 },
+    db: { total: "", active: "", inactive: "", overdue: "", pending: "", incomplete: "", hvLapsed: "", retVal: 5000, reactRate: 6, recallRate: 20, pendRate: 25, months: 12, refNow: "", refTarget: "" },
+    treatments: [
+      { name: "Implants", consults: "", starts: "", value: "" },
+      { name: "Aligners", consults: "", starts: "", value: "" },
+      { name: "Full-mouth rehabilitation", consults: "", starts: "", value: "" },
+      { name: "Veneers & cosmetic", consults: "", starts: "", value: "" },
+      { name: "Crowns & bridges", consults: "", starts: "", value: "" },
+    ],
+    hvLift: 10,
+    capacity: { dentists: "", chairs: "", hours: "", days: 26, slot: 30, booked: "", visits: 4, backlog: "", peak: "" },
+    systems: {}, tried: "", scores: {}, excluded: {},
+    decision: { next: "call2", when: "", who: "", budget: "", objections: "", capture: 50 },
+    notes: {},
+  };
+}
+
+/* ---------- Storage (per-browser) ---------- */
+const KEY = "patientcurve.diagnostic.v1";
+let store = { current: null, clinics: {}, step: 0 };
+function load() {
+  try { const raw = localStorage.getItem(KEY); if (raw) store = Object.assign(store, JSON.parse(raw)); } catch (e) {}
+  if (!store.current || !store.clinics[store.current]) {
+    const id = "c" + Date.now(); store.clinics[id] = sampleState(); store.current = id;
+  }
+}
+let saveTimer;
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }, 250); }
+const S = () => store.clinics[store.current];
+
+function getPath(obj, path) { return path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj); }
+function setPath(obj, path, val) {
+  const ks = path.split("."); let o = obj;
+  for (let i = 0; i < ks.length - 1; i++) { if (o[ks[i]] == null) o[ks[i]] = {}; o = o[ks[i]]; }
+  o[ks[ks.length - 1]] = val;
+}
+
+/* ---------- Calculations ---------- */
+function calc(s) {
+  const f = s.funnel, r = {};
+  r.stages = [["Enquiries", "enq"], ["Appointments booked", "appt"], ["Consultations attended", "consult"], ["Treatment plans accepted", "accepted"], ["Treatment starts", "starts"]];
+  r.convNames = ["Enquiry → appointment", "Appointment → consultation", "Consultation → plan accepted", "Plan accepted → treatment start"];
+  r.convIds = ["lead", "noshow", "acceptance", "start"];
+  const vals = r.stages.map(([, k]) => n(f[k]));
+  r.vals = vals;
+  r.conv = [1, 2, 3, 4].map(i => ratio(vals[i], vals[i - 1]));
+  r.tgt = [n(f.t1), n(f.t2), n(f.t3), n(f.t4)].map(x => x / 100);
+  r.atv = n(f.atv);
+  r.newRev = vals[4] * r.atv;
+  r.gain = r.conv.map((c, i) => (Number.isFinite(c) && c > 0 && c < r.tgt[i] && vals[4] > 0 ? vals[4] * (r.tgt[i] / c - 1) * r.atv : 0));
+  r.leakIdx = r.gain.reduce((b, g, i) => (g > (r.gain[b] || 0) ? i : b), -1);
+  if (r.leakIdx >= 0 && r.gain[r.leakIdx] <= 0) r.leakIdx = -1;
+  r.consultToStart = ratio(vals[4], vals[2]);
+
+  // Database
+  const d = s.db;
+  r.dbReact = n(d.inactive) * n(d.reactRate) / 100 * n(d.retVal);
+  r.dbRecall = n(d.overdue) * n(d.recallRate) / 100 * n(d.retVal);
+  r.dbPending = (n(d.pending) + n(d.incomplete)) * n(d.pendRate) / 100 * r.atv;
+  r.dbPool = r.dbReact + r.dbRecall + r.dbPending;
+  const months = Math.max(1, n(d.months) || 12);
+  r.dbMonths = months;
+  const extraRefs = Math.max(0, n(d.refTarget) - n(d.refNow));
+  r.refGain = extraRefs * (Number.isFinite(r.consultToStart) ? r.consultToStart : 0.4) * r.atv;
+
+  // Treatments
+  const lift = n(s.hvLift) / 100;
+  r.tx = s.treatments.map(t => {
+    const c = n(t.consults), st = Math.min(n(t.starts), c || n(t.starts)), v = n(t.value);
+    const acc = ratio(st, c);
+    const extra = c > 0 ? Math.max(0, Math.min(c, st + c * lift) - st) * v : 0;
+    return { name: t.name, c, st, v, acc, rev: st * v, extra };
+  });
+  r.txRev = r.tx.reduce((a, t) => a + t.rev, 0);
+  r.txGain = r.tx.reduce((a, t) => a + t.extra, 0);
+
+  // Capacity
+  const cp = s.capacity;
+  r.slots = n(cp.chairs) * n(cp.hours) * 60 / Math.max(5, n(cp.slot) || 30) * n(cp.days);
+  r.util = r.slots > 0 ? n(cp.booked) / r.slots : NaN;
+  r.capVerdict = !Number.isFinite(r.util) ? "unknown" : r.util < 0.7 ? "under" : r.util < 0.85 ? "balanced" : "full";
+  const spare = Math.max(0, r.slots * 0.85 - n(cp.booked));
+  r.spareSlots = spare;
+  r.acqGain = r.capVerdict === "under" ? (spare / Math.max(1, n(cp.visits) || 4)) * 0.5 * r.atv : 0;
+
+  // Systems gaps per opportunity
+  r.gaps = {};
+  SYSTEMS.forEach(([k, label, , opp]) => {
+    const st = s.systems[k];
+    if (opp === "all") return;
+    const ids = opp === "acceptance" ? ["acceptance", "start", "highvalue", "pending"] : [opp];
+    ids.forEach(id => { if (st === "none" || st === "manual") (r.gaps[id] = r.gaps[id] || []).push({ label, st }); });
+  });
+
+  // Opportunities
+  const raw = [
+    { id: "lead", m: r.gain[0], why: whyConv(r, 0) },
+    { id: "noshow", m: r.gain[1], why: whyConv(r, 1) },
+    { id: "acceptance", m: r.gain[2], why: whyConv(r, 2) },
+    { id: "start", m: r.gain[3], why: whyConv(r, 3) },
+    { id: "reactivation", m: (r.dbReact + r.dbRecall) / months, why: `${fmtN(d.inactive)} inactive and ${fmtN(d.overdue)} overdue-recall patients. Pool of ${inr(r.dbReact + r.dbRecall)} worked over ${months} months.` },
+    { id: "pending", m: r.dbPending / months, why: `${fmtN(n(d.pending) + n(d.incomplete))} planned or unfinished treatments at ${d.pendRate || 0}% recovery. Pool of ${inr(r.dbPending)} over ${months} months.` },
+    { id: "highvalue", m: r.txGain, why: `+${s.hvLift || 0} points acceptance on high-value treatments. Overlaps with treatment acceptance follow-up.` },
+    { id: "referral", m: r.refGain, why: `${fmtN(extraRefs)} more referred patients a month (from ${fmtN(d.refNow)} to ${fmtN(d.refTarget)}).` },
+    { id: "acquisition", m: r.acqGain, why: r.capVerdict === "under" ? `${fmtN(Math.round(spare))} spare appointment slots a month at ${pct(r.util)} utilisation. Value assumes half are filled.` : "Only worth pursuing once capacity is under-used and the funnel converts." },
+  ];
+  const maxM = Math.max(1, ...raw.map(o => o.m));
+  r.opps = raw.map(o => {
+    const def = OPP_DEFS[o.id];
+    const sc = Object.assign({}, def.d, (s.scores || {})[o.id] || {});
+    let cap;
+    if (r.capVerdict === "unknown") cap = 3;
+    else if (def.demand) cap = r.capVerdict === "under" ? 5 : r.capVerdict === "balanced" ? 3 : 1;
+    else cap = r.capVerdict === "full" ? 3 : 4;
+    const rev = 1 + 4 * (o.m / maxM);
+    const score = o.m <= 0 ? 0 : (0.35 * rev + 0.15 * sc.confidence + 0.15 * (6 - sc.cost) + 0.15 * sc.speed + 0.10 * (6 - sc.difficulty) + 0.10 * cap);
+    return Object.assign({}, o, def, { sc, cap, score, excluded: !!(s.excluded || {})[o.id], gaps: r.gaps[o.id] || [] });
+  }).sort((a, b) => (a.excluded - b.excluded) || (b.score - a.score));
+  r.active = r.opps.filter(o => !o.excluded && o.m > 0);
+  r.top = r.active[0] || null;
+  // Money found = recoverable leakage only; acquisition needs new spend, so it is ranked but kept out of the total.
+  // Combined total: funnel leaks compound, so count the largest funnel leak plus database/referral/acquisition; highvalue overlaps acceptance.
+  const funnelBest = Math.max(0, ...r.active.filter(o => ["lead", "noshow", "acceptance", "start", "highvalue"].includes(o.id)).map(o => o.m));
+  const funnelSum = r.active.filter(o => ["lead", "noshow", "acceptance", "start"].includes(o.id)).reduce((a, o) => a + o.m, 0);
+  const other = r.active.filter(o => ["reactivation", "pending", "referral"].includes(o.id)).reduce((a, o) => a + o.m, 0);
+  r.totalCons = funnelBest + other;
+  r.totalAll = Math.max(funnelSum, funnelBest) + other;
+
+  r.curRev = n(s.goal.cur); r.desRev = n(s.goal.des);
+  r.goalGap = Math.max(0, r.desRev - r.curRev);
+  return r;
+}
+function whyConv(r, i) {
+  const c = r.conv[i];
+  if (!Number.isFinite(c)) return "Enter the funnel numbers to size this.";
+  return `${r.convNames[i]} at ${pct(c)} vs ${pct(r.tgt[i])} target.`;
+}
+function fmtN(v) { return Math.round(n(v)).toLocaleString("en-IN"); }
+
+/* ---------- Rendering ---------- */
+const $ = id => document.getElementById(id);
+let R = null;
+
+function field(path, label, opts = {}) {
+  const v = getPath(S(), path) ?? "";
+  const type = opts.type || "number";
+  const wrap = opts.money ? "money-in" : opts.pct ? "pct-in" : "";
+  const id = "f_" + path.replace(/\./g, "_");
+  let input;
+  if (type === "textarea") input = `<textarea id="${id}" data-k="${path}" placeholder="${esc(opts.ph || "")}">${esc(v)}</textarea>`;
+  else if (type === "select") input = `<select id="${id}" data-k="${path}">${opts.options.map(([ov, ol]) => `<option value="${ov}"${ov === v ? " selected" : ""}>${esc(ol)}</option>`).join("")}</select>`;
+  else input = `<input id="${id}" type="${type}" data-k="${path}" value="${esc(v)}" ${type === "number" ? 'inputmode="decimal" min="0" step="any"' : ""} placeholder="${esc(opts.ph || "")}">`;
+  return `<label class="field${opts.wide ? " wide" : ""}" for="${id}"><span>${esc(label)}</span>${wrap ? `<div class="${wrap}">${input}</div>` : input}</label>`;
+}
+
+function renderRail() {
+  const s = S();
+  const done = [
+    n(s.goal.cur) > 0 && n(s.goal.des) > 0,
+    n(s.funnel.enq) > 0 && n(s.funnel.starts) > 0 && n(s.funnel.atv) > 0,
+    n(s.db.total) > 0,
+    s.treatments.some(t => n(t.consults) > 0),
+    n(s.capacity.chairs) > 0 && n(s.capacity.booked) > 0,
+    Object.keys(s.systems).length >= 6,
+    R.active.length > 0,
+    !!s.decision.next && !!(s.decision.when || s.decision.who),
+  ];
+  $("rail").innerHTML = STEPS.map((st, i) =>
+    `<button type="button" data-step="${i}" class="${i === store.step ? "on" : ""} ${done[i] ? "done" : ""}" aria-current="${i === store.step ? "step" : "false"}">
+      <span class="n">${i + 1}</span><span class="t">${esc(st.t)}</span><span class="d" title="${done[i] ? "Captured" : ""}"></span></button>`).join("") +
+    `<div class="principle"><b>Find money first.</b>Diagnose before selling. Then decide what system can recover that money.</div>`;
+}
+
+function renderSheet() {
+  const st = STEPS[store.step];
+  const body = BODIES[st.id]();
+  $("sheet").innerHTML = `
+    <div class="step-head"><div><span class="eyebrow">Step ${store.step + 1} of ${STEPS.length} · Strategy ${st.sec}</span><h2>${esc(st.t)}</h2><p>${esc(st.lead)}</p></div></div>
+    <div class="step-body">
+      <div class="work">${body}</div>
+      <aside class="ask">
+        <h3>Ask on the call</h3>
+        <ol>${st.ask.map(q => `<li>${esc(q)}</li>`).join("")}</ol>
+        <label class="field" for="note_${st.id}"><span>Call notes for this step</span>
+          <textarea id="note_${st.id}" data-k="notes.${st.id}" placeholder="What they said, in their words">${esc((S().notes || {})[st.id] || "")}</textarea></label>
+      </aside>
+    </div>
+    <div class="step-foot">
+      <button class="btn" type="button" data-go="${store.step - 1}" ${store.step === 0 ? "disabled hidden" : ""}>← ${esc(STEPS[store.step - 1]?.t || "")}</button>
+      <span></span>
+      ${store.step < STEPS.length - 1 ? `<button class="btn primary" type="button" data-go="${store.step + 1}">${esc(STEPS[store.step + 1].t)} →</button>` : ""}
+    </div>`;
+  refreshLive();
+}
+
+const BODIES = {
+  goal() {
+    return `
+      <div class="group"><h3>Clinic</h3>
+        <div class="fields">
+          ${field("clinic.name", "Clinic name", { type: "text", ph: "e.g. Smile Studio Dental" })}
+          ${field("clinic.city", "City / area", { type: "text" })}
+          ${field("clinic.contact", "Decision maker", { type: "text", ph: "Name, role" })}
+          ${field("clinic.date", "Call date", { type: "date" })}
+        </div></div>
+      <div class="group"><h3>Current state → desired state</h3>
+        <div class="fields">
+          ${field("goal.cur", "Current monthly revenue", { money: true })}
+          ${field("goal.des", "Desired monthly revenue", { money: true })}
+          ${field("goal.trend", "Revenue trend", { type: "select", options: [["", "Select…"], ["growing", "Growing"], ["flat", "Flat"], ["declining", "Declining"], ["seasonal", "Seasonal / volatile"]] })}
+          ${field("goal.timeline", "Timeline for growth", { type: "text", ph: "e.g. 12 months" })}
+          ${field("goal.reason", "Reason for growth", { type: "textarea", wide: true, ph: "Expansion, new chair, loan, partner exit…" })}
+          ${field("goal.ambition", "Business ambition", { type: "textarea", wide: true })}
+        </div></div>
+      <div class="stats" id="goalStats"></div>`;
+  },
+  funnel() {
+    const f = S().funnel;
+    let rows = "";
+    R.stages.forEach(([label, k], i) => {
+      rows += `<div class="f-row"><label class="lbl" for="fu_${k}">${label}</label><div class="bar-wrap"><div class="bar" data-bar="${i}"></div></div>
+        <input id="fu_${k}" type="number" inputmode="decimal" min="0" step="any" data-k="funnel.${k}" value="${esc(f[k])}" aria-label="${label} per month"></div>`;
+      if (i < 4) rows += `<div class="f-gap"><span></span><div class="conv"><span>${R.convNames[i]}</span><span class="pctv" data-conv="${i}"></span>
+        <span class="tgt"><label for="fu_t${i + 1}">target</label><input id="fu_t${i + 1}" type="number" min="0" max="100" step="1" data-k="funnel.t${i + 1}" value="${esc(f["t" + (i + 1)])}">%</span>
+        <span data-leak="${i}"></span></div></div>`;
+    });
+    return `
+      <div class="group"><h3>New-patient funnel, per month</h3>
+        <p class="hint">Targets are typical well-run clinic benchmarks; change them if the clinic's market is different.</p>
+        <div class="funnel">${rows}</div></div>
+      <div class="fields">${field("funnel.atv", "Average treatment value", { money: true })}</div>
+      <div id="leakBox"></div>`;
+  },
+  database() {
+    return `
+      <div class="group"><h3>Patient database</h3>
+        <div class="fields">
+          ${field("db.total", "Total historical patients")}
+          ${field("db.active", "Active (visited in last 12 months)")}
+          ${field("db.inactive", "Inactive patients")}
+          ${field("db.overdue", "Overdue recalls")}
+          ${field("db.pending", "Pending treatments (planned, not started)")}
+          ${field("db.incomplete", "Incomplete treatments")}
+          ${field("db.hvLapsed", "Previous high-value patients not seen in 12 months")}
+        </div></div>
+      <div class="group"><h3>Recovery assumptions</h3>
+        <p class="hint">Conservative defaults. Agree these with the clinic so the number is theirs, not ours.</p>
+        <div class="fields">
+          ${field("db.retVal", "Revenue per returning patient", { money: true })}
+          ${field("db.reactRate", "Inactive patients who return", { pct: true })}
+          ${field("db.recallRate", "Overdue recalls who book", { pct: true })}
+          ${field("db.pendRate", "Pending treatments recovered", { pct: true })}
+          ${field("db.months", "Spread recovery over (months)")}
+        </div></div>
+      <div class="group"><h3>Referrals</h3>
+        <div class="fields">
+          ${field("db.refNow", "Referred new patients / month today")}
+          ${field("db.refTarget", "Realistic target / month")}
+        </div></div>
+      <div class="stats" id="dbStats"></div>`;
+  },
+  treatments() {
+    const rows = S().treatments.map((t, i) => `
+      <tr>
+        <td><input class="name" type="text" id="tx_n_${i}" data-k="treatments.${i}.name" value="${esc(t.name)}" aria-label="Treatment name"></td>
+        <td class="r"><input type="number" id="tx_c_${i}" min="0" step="any" data-k="treatments.${i}.consults" value="${esc(t.consults)}" aria-label="Consultations per month"></td>
+        <td class="r"><input type="number" id="tx_s_${i}" min="0" step="any" data-k="treatments.${i}.starts" value="${esc(t.starts)}" aria-label="Starts per month"></td>
+        <td class="r"><div class="money-in"><input type="number" id="tx_v_${i}" min="0" step="any" data-k="treatments.${i}.value" value="${esc(t.value)}" aria-label="Average value"></div></td>
+        <td class="r num" data-tx-acc="${i}"></td>
+        <td class="r num" data-tx-rev="${i}"></td>
+        <td class="r num" data-tx-extra="${i}"></td>
+        <td><button class="btn sm ghost danger" type="button" data-del-tx="${i}" aria-label="Remove ${esc(t.name)}">✕</button></td>
+      </tr>`).join("");
+    return `
+      <div class="group"><h3>Treatment mix, per month</h3>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Treatment</th><th class="r">Consults</th><th class="r">Starts</th><th class="r">Avg value</th><th class="r">Accept</th><th class="r">Revenue</th><th class="r">If lifted</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr><td colspan="5">Total</td><td class="r num" id="txTot"></td><td class="r num" id="txGain"></td><td></td></tr></tfoot>
+        </table></div>
+        <div class="row-btns"><button class="btn sm" type="button" id="addTx">Add treatment</button></div>
+      </div>
+      <div class="fields">${field("hvLift", "Acceptance lift to test (percentage points)", { pct: true })}</div>
+      <div id="txBox"></div>`;
+  },
+  capacity() {
+    return `
+      <div class="group"><h3>Chairs and time</h3>
+        <div class="fields">
+          ${field("capacity.dentists", "Dentists")}
+          ${field("capacity.chairs", "Chairs")}
+          ${field("capacity.hours", "Clinic hours per day")}
+          ${field("capacity.days", "Working days per month")}
+          ${field("capacity.slot", "Average appointment (minutes)")}
+          ${field("capacity.booked", "Appointments booked per month")}
+          ${field("capacity.visits", "Visits per treatment course")}
+          ${field("capacity.backlog", "Appointment backlog (days)")}
+          ${field("capacity.peak", "Peak / off-peak and empty slots", { type: "textarea", wide: true })}
+        </div></div>
+      <div class="stats" id="capStats"></div>
+      <div id="capBox"></div>`;
+  },
+  systems() {
+    const s = S();
+    return `
+      <div class="group"><h3>How each step is handled today</h3>
+        <div class="sys-list">${SYSTEMS.map(([k, label, hint]) => `
+          <div class="sys"><div class="nm">${esc(label)}<small>${esc(hint)}</small></div>
+            <div class="seg" role="group" aria-label="${esc(label)}">${["none", "manual", "auto"].map(v =>
+              `<button type="button" data-sys="${k}" data-v="${v}" class="${s.systems[k] === v ? "on" : ""}" aria-pressed="${s.systems[k] === v}">${STATE_LABEL[v]}</button>`).join("")}</div></div>`).join("")}
+        </div></div>
+      <div class="fields">${field("tried", "What has already been tried, and what happened", { type: "textarea", wide: true })}</div>
+      <div id="sysBox"></div>`;
+  },
+  opps() {
+    return `<div class="callout" id="oppsHead"></div><div class="opps" id="oppList"></div>`;
+  },
+  decision() {
+    return `<div id="verdict"></div>
+      <div class="group"><h3>Call 2 storyline</h3><div class="story" id="story"></div></div>
+      <div class="group"><h3>Decision</h3>
+        <div class="fields">
+          ${field("decision.next", "Outcome of this call", { type: "select", options: [["call2", "Book Call 2: revenue opportunity"], ["pilot", "Start a pilot"], ["proposal", "Send proposal"], ["data", "Need more data from clinic"], ["nofit", "Not a fit right now"]] })}
+          ${field("decision.when", "Next meeting date", { type: "date" })}
+          ${field("decision.who", "Who must attend", { type: "text", ph: "Owner, partner, front-desk lead" })}
+          ${field("decision.budget", "Budget / investment appetite", { type: "text" })}
+          ${field("decision.capture", "Share of the opportunity to promise in 90 days", { pct: true })}
+          ${field("decision.objections", "Objections and open questions", { type: "textarea", wide: true })}
+        </div></div>
+      <div class="group"><h3>Call summary</h3>
+        <div class="summary-box" id="summary"></div>
+        <div class="row-btns"><button class="btn primary" type="button" id="copySummary">Copy summary</button></div>
+      </div>`;
+  },
+};
+
+/* Live refresh: update computed parts without touching inputs (keeps focus while typing) */
+function refreshLive() {
+  R = calc(S());
+  const s = S(), id = STEPS[store.step].id;
+  if (id === "goal") {
+    const g = $("goalStats"); if (g) g.innerHTML = `
+      ${stat("Revenue gap / month", R.goalGap ? inr(R.goalGap) : "—", R.curRev ? `${pct(R.goalGap / R.curRev)} growth needed` : "Enter both figures")}
+      ${stat("Gap / year", R.goalGap ? inr(R.goalGap * 12) : "—", "")}
+      ${stat("Current annual run-rate", R.curRev ? inr(R.curRev * 12) : "—", "")}`;
+  }
+  if (id === "funnel") {
+    const max = Math.max(1, ...R.vals);
+    document.querySelectorAll("[data-bar]").forEach(b => {
+      const i = +b.dataset.bar; b.style.width = (R.vals[i] / max * 100) + "%";
+      b.style.background = (R.leakIdx >= 0 && i === R.leakIdx + 1) ? "var(--leak)" : "var(--accent)";
+    });
+    document.querySelectorAll("[data-conv]").forEach(e => { e.textContent = pct(R.conv[+e.dataset.conv]); });
+    document.querySelectorAll("[data-leak]").forEach(e => {
+      const i = +e.dataset.leak, c = R.conv[i];
+      if (!Number.isFinite(c)) { e.innerHTML = ""; return; }
+      e.innerHTML = R.gain[i] > 0
+        ? `<span class="pill ${i === R.leakIdx ? "leak" : "warn"}">${i === R.leakIdx ? "Biggest leak · " : ""}${inr(R.gain[i])}/mo</span>`
+        : `<span class="pill ok">At or above target</span>`;
+    });
+    const box = $("leakBox");
+    if (box) {
+      if (R.leakIdx >= 0) {
+        const def = OPP_DEFS[R.convIds[R.leakIdx]];
+        box.innerHTML = `<div class="callout leak"><span class="eyebrow">Biggest leakage</span><b class="big">${inr(R.gain[R.leakIdx])} / month</b>
+          ${esc(R.convNames[R.leakIdx])} converts at ${pct(R.conv[R.leakIdx])} against a ${pct(R.tgt[R.leakIdx])} target. ${esc(LEAK_TEXT[R.leakIdx])}
+          <div style="margin-top:8px"><span class="pill neutral">Likely intervention: ${esc(def.iv)}</span></div></div>
+          <div class="stats" style="margin-top:12px">${stat("New-patient treatment revenue", inr(R.newRev), `${fmtN(R.vals[4])} starts × ${inr(R.atv)}`)}${stat("Enquiry → start", pct(ratio(R.vals[4], R.vals[0]), 1), "End-to-end conversion")}${stat("Revenue per enquiry", R.vals[0] ? inr(R.newRev / R.vals[0]) : "—", "What each enquiry is worth today")}</div>`;
+      } else box.innerHTML = `<div class="callout ok">${R.vals[0] ? "Every stage is at or above target. The constraint is probably volume, the database or capacity." : "Enter monthly numbers for each stage to find the leak."}</div>`;
+    }
+  }
+  if (id === "database") {
+    const g = $("dbStats"); const d = s.db;
+    if (g) g.innerHTML = `
+      ${stat("Reactivation pool", inr(R.dbReact), `${fmtN(d.inactive)} × ${d.reactRate || 0}% × ${inr(d.retVal)}`)}
+      ${stat("Overdue recall pool", inr(R.dbRecall), `${fmtN(d.overdue)} × ${d.recallRate || 0}% × ${inr(d.retVal)}`)}
+      ${stat("Pending treatment pool", inr(R.dbPending), `${fmtN(n(d.pending) + n(d.incomplete))} × ${d.pendRate || 0}% × ${inr(R.atv)} ATV`)}
+      ${stat("Referral upside", inr(R.refGain) + "/mo", "Extra referrals × consult-to-start rate × ATV")}
+      <div class="callout money" style="grid-column:1/-1"><span class="eyebrow">Revenue sitting in the existing database</span><b class="big">${inr(R.dbPool)}</b>About ${inr(R.dbPool / R.dbMonths)} a month if worked over ${R.dbMonths} months. No new marketing spend needed.</div>`;
+  }
+  if (id === "treatments") {
+    R.tx.forEach((t, i) => {
+      const a = document.querySelector(`[data-tx-acc="${i}"]`); if (!a) return;
+      a.textContent = pct(t.acc);
+      document.querySelector(`[data-tx-rev="${i}"]`).textContent = t.rev ? inr(t.rev) : "—";
+      document.querySelector(`[data-tx-extra="${i}"]`).textContent = t.extra ? "+" + inr(t.extra) : "—";
+    });
+    const tt = $("txTot"); if (tt) tt.textContent = inr(R.txRev);
+    const tg = $("txGain"); if (tg) tg.textContent = "+" + inr(R.txGain);
+    const box = $("txBox");
+    if (box) {
+      const best = [...R.tx].sort((a, b) => b.extra - a.extra)[0];
+      const share = R.curRev ? R.txRev / R.curRev : NaN;
+      box.innerHTML = best && best.extra > 0
+        ? `<div class="callout money"><span class="eyebrow">Mix opportunity</span><b class="big">+${inr(R.txGain)} / month</b>
+            Raising acceptance by ${s.hvLift || 0} points across these treatments. ${esc(best.name)} alone adds ${inr(best.extra)}.
+            ${Number.isFinite(share) ? ` These treatments are ${pct(share)} of current revenue.` : ""} The clinic may not need more patients, it may need more yeses on the right ones.</div>`
+        : `<div class="callout">Enter monthly consultations, starts and average value to see where a higher acceptance rate pays most.</div>`;
+    }
+  }
+  if (id === "capacity") {
+    const g = $("capStats");
+    if (g) g.innerHTML = `
+      ${stat("Appointment slots / month", R.slots ? fmtN(R.slots) : "—", "Chairs × hours × days ÷ slot length")}
+      ${stat("Chair utilisation", pct(R.util), `${fmtN(s.capacity.booked)} booked`)}
+      ${stat("Spare slots at 85%", R.slots ? fmtN(R.spareSlots) : "—", "Practical ceiling")}`;
+    const box = $("capBox");
+    const V = { under: ["ok", "Capacity is under-used: increase demand", "There is room in the chairs. Lead recovery, reactivation, referrals and acquisition can all be absorbed."],
+      balanced: ["warn", "Capacity is moderately used: fix conversion first", "Some room remains. Prioritise conversion and database revenue before buying more leads."],
+      full: ["leak", "Capacity is full: grow revenue per patient", "More demand will not fit. Focus on treatment mix, acceptance of high-value cases, pricing and filling off-peak slots."],
+      unknown: ["", "Enter chairs, hours and booked appointments", "Before recommending more marketing, confirm the clinic can fulfil extra demand."] }[R.capVerdict];
+    if (box) box.innerHTML = `<div class="callout ${V[0]}"><span class="eyebrow">Decision rule</span><b class="big" style="font-family:var(--f-display);font-size:19px">${V[1]}</b>${V[2]}</div>`;
+  }
+  if (id === "systems") {
+    const box = $("sysBox");
+    const counts = { none: 0, manual: 0, auto: 0 }; SYSTEMS.forEach(([k]) => { if (s.systems[k]) counts[s.systems[k]]++; });
+    const gapOpps = Object.keys(R.gaps).filter(k => OPP_DEFS[k]);
+    if (box) box.innerHTML = `<div class="stats">${stat("No process", counts.none, "Revenue leaks with nobody watching")}${stat("Manual", counts.manual, "Depends on staff remembering")}${stat("Systemised", counts.auto, "Runs every time")}</div>
+      ${gapOpps.length ? `<div class="callout warn" style="margin-top:12px"><span class="eyebrow">Evidence for</span><div class="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${gapOpps.map(k => `<span class="pill warn">${esc(OPP_DEFS[k].t)}</span>`).join("")}</div></div>` : ""}`;
+  }
+  if (id === "opps") renderOpps();
+  if (id === "decision") renderDecision();
+  renderLedger();
+}
+const LEAK_TEXT = [
+  "Usually lead handling: slow replies, no follow-up, enquiries lost on personal phones, or trust not built before booking.",
+  "Usually no-shows, cancellations or scheduling friction. Confirmations, reminders and same-day rescheduling recover most of it.",
+  "Usually treatment acceptance: price concerns, weak education or presentation, no urgency, or no follow-up after 'I'll think about it'.",
+  "Patients agree but never start. Systematic follow-up of accepted plans is usually the fastest money in the clinic.",
+];
+function stat(label, v, sub) { return `<div class="stat"><span class="eyebrow">${esc(label)}</span><div class="v">${v}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`; }
+
+const FACTORS = [["confidence", "Confidence in evidence", "low → high"], ["cost", "Implementation cost", "low → high"], ["speed", "Speed to results", "slow → fast"], ["difficulty", "Execution difficulty", "easy → hard"]];
+function renderOpps() {
+  const head = $("oppsHead"), list = $("oppList"); if (!list) return;
+  head.innerHTML = `<b>How the ranking works.</b> Score = revenue potential (35%) + confidence + low cost + speed (15% each) + ease + capacity fit (10% each). Capacity fit is set from step 5. Excluded items drop out of totals.`;
+  list.innerHTML = R.opps.map((o, i) => {
+    const rank = o.excluded || o.m <= 0 ? "–" : (R.active.indexOf(o) + 1);
+    return `<div class="opp ${o === R.top ? "top" : ""} ${o.excluded || o.m <= 0 ? "excluded" : ""}">
+      <div class="rank">${rank}</div>
+      <div style="min-width:0"><div class="title">${esc(o.t)}</div><div class="why">${esc(o.why)}</div>
+        <div class="chips">
+          <span class="pill neutral">${esc(o.diag)}</span>
+          ${o.gaps.length ? `<span class="pill warn" title="${esc(o.gaps.map(g => g.label + ": " + STATE_LABEL[g.st]).join(", "))}">System gap: ${esc(o.gaps.map(g => g.label).join(", "))}</span>` : ""}
+          ${o.demand && R.capVerdict === "full" ? `<span class="pill leak">Capacity full</span>` : ""}
+          ${o.id === "highvalue" ? `<span class="pill neutral">Overlaps acceptance</span>` : ""}
+        </div></div>
+      <div class="val"><div class="m">${o.m > 0 ? inr(o.m) : "—"}</div><div class="y">${o.m > 0 ? "per month · " + inr(o.m * 12) + "/yr" : "not sized"}</div>
+        <div class="sc">score ${o.score ? o.score.toFixed(2) : "—"} · capacity ${o.cap}/5</div>
+        <button class="btn sm ghost" type="button" data-excl="${o.id}" style="margin-top:6px">${o.excluded ? "Include" : "Exclude"}</button></div>
+      <div class="factors">${FACTORS.map(([k, lbl, hint]) => `<div class="f"><span>${lbl} <em style="font-style:normal;opacity:.7">(${hint})</em></span>
+        <div class="seg score" role="group" aria-label="${lbl}">${[1, 2, 3, 4, 5].map(v => `<button type="button" data-score="${o.id}" data-f="${k}" data-v="${v}" class="${o.sc[k] === v ? "on" : ""}" aria-pressed="${o.sc[k] === v}">${v}</button>`).join("")}</div></div>`).join("")}</div>
+    </div>`;
+  }).join("");
+}
+
+function multipleProblems() {
+  if (R.active.length < 3) return false;
+  const top = R.active[0].m;
+  const diags = new Set(R.active.filter(o => o.m >= top * 0.35).slice(0, 4).map(o => o.diag));
+  return diags.size >= 3;
+}
+function renderDecision() {
+  const s = S(), v = $("verdict"); if (!v) return;
+  const t = R.top;
+  if (!t) { v.innerHTML = `<div class="callout">Complete the funnel, database and capacity steps to get a recommendation.</div>`; $("story").innerHTML = ""; $("summary").textContent = buildSummary(); return; }
+  const multi = multipleProblems();
+  const iv = multi ? "Revenue operating system" : t.iv;
+  const diag = multi ? "Multiple problems" : t.diag;
+  const capture = n(s.decision.capture) / 100;
+  const top3 = R.active.slice(0, 3);
+  v.innerHTML = `<div class="verdict">
+    <span class="eyebrow">Diagnosis: ${esc(diag)}</span>
+    <h3>${esc(iv)}</h3>
+    <div class="pos">Start with <b>${esc(t.t.toLowerCase())}</b>: ${esc(t.pc)}.${multi ? ` Then layer in ${esc(top3.slice(1).map(o => o.t.toLowerCase()).join(" and "))}.` : ""}</div>
+    <div class="pos" style="color:var(--muted)">PatientCurve helps dental clinics recover and grow revenue from the patient journey, from enquiry to appointment, treatment and reactivation.</div>
+  </div>`;
+  const gapCover = R.goalGap ? R.totalCons / R.goalGap : NaN;
+  $("story").innerHTML = [
+    ["Current situation", `${inr(R.curRev)}/month${s.goal.trend ? ", " + s.goal.trend : ""}. Goal ${inr(R.desRev)}/month${s.goal.timeline ? " in " + esc(s.goal.timeline) : ""}. ${fmtN(R.vals[0])} enquiries → ${fmtN(R.vals[4])} starts a month.`],
+    ["Bottleneck", esc(t.why)],
+    ["Financial impact", `${inr(t.m)}/month (${inr(t.m * 12)}/yr) from this alone. ${inr(R.totalCons)}/month identified across all opportunities${Number.isFinite(gapCover) ? `, ${pct(Math.min(gapCover, 9.99))} of the goal gap` : ""}.`],
+    ["Solution", esc(t.pc) + "."],
+    ["Expected outcome", `Recovering ${pct(capture)} in the first 90 days: about ${inr(t.m * capture)}/month from the top opportunity, ${inr(R.totalCons * capture)}/month overall.`],
+  ].map(([h, p]) => `<div class="card"><span class="eyebrow">${h}</span><p>${p}</p></div>`).join("");
+  $("summary").textContent = buildSummary();
+}
+
+function buildSummary() {
+  const s = S(), c = s.clinic, d = s.decision;
+  const L = [];
+  L.push(`REVENUE DIAGNOSTIC: ${c.name || "Unnamed clinic"}${c.city ? " (" + c.city + ")" : ""}`);
+  L.push(`Call date: ${c.date || "-"} | Decision maker: ${c.contact || "-"}`);
+  L.push("");
+  L.push(`GOAL: ${inr(R.curRev)}/mo now -> ${inr(R.desRev)}/mo target${s.goal.timeline ? " in " + s.goal.timeline : ""} (gap ${inr(R.goalGap)}/mo)`);
+  if (s.goal.reason) L.push(`Why: ${s.goal.reason}`);
+  L.push("");
+  L.push("FUNNEL (monthly):");
+  R.stages.forEach(([lbl], i) => L.push(`  ${lbl}: ${fmtN(R.vals[i])}${i > 0 ? `  (${pct(R.conv[i - 1])} vs ${pct(R.tgt[i - 1])} target)` : ""}`));
+  L.push(`  Average treatment value: ${inr(R.atv)}`);
+  if (R.leakIdx >= 0) L.push(`  Biggest leak: ${R.convNames[R.leakIdx]} = ${inr(R.gain[R.leakIdx])}/mo`);
+  L.push("");
+  L.push(`DATABASE: ${fmtN(s.db.total)} total, ${fmtN(s.db.inactive)} inactive, ${fmtN(s.db.overdue)} overdue recalls, ${fmtN(n(s.db.pending) + n(s.db.incomplete))} pending/incomplete. Pool ~${inr(R.dbPool)}.`);
+  L.push(`CAPACITY: ${pct(R.util)} chair utilisation (${R.capVerdict}).`);
+  const gaps = SYSTEMS.filter(([k]) => s.systems[k] === "none").map(([, l]) => l);
+  if (gaps.length) L.push(`NO PROCESS FOR: ${gaps.join(", ")}`);
+  if (s.tried) L.push(`ALREADY TRIED: ${s.tried}`);
+  L.push("");
+  L.push("RANKED OPPORTUNITIES (per month):");
+  R.active.forEach((o, i) => L.push(`  ${i + 1}. ${o.t}: ${inr(o.m)} (score ${o.score.toFixed(2)})`));
+  L.push(`  Recoverable total (excl. new marketing): ${inr(R.totalCons)}/mo, ${inr(R.totalCons * 12)}/yr`);
+  L.push("");
+  if (R.top) {
+    const multi = multipleProblems();
+    L.push(`RECOMMENDATION: ${multi ? "Revenue operating system" : R.top.iv}, starting with ${R.top.t}.`);
+    L.push(`  ${R.top.pc}.`);
+  }
+  const NEXT = { call2: "Book Call 2: revenue opportunity", pilot: "Start a pilot", proposal: "Send proposal", data: "Need more data from clinic", nofit: "Not a fit right now" };
+  L.push(`NEXT STEP: ${NEXT[d.next] || "-"}${d.when ? " on " + d.when : ""}${d.who ? " with " + d.who : ""}`);
+  if (d.budget) L.push(`Budget: ${d.budget}`);
+  if (d.objections) L.push(`Objections: ${d.objections}`);
+  const notes = STEPS.filter(st => (s.notes || {})[st.id]).map(st => `  [${st.t}] ${s.notes[st.id]}`);
+  if (notes.length) { L.push(""); L.push("NOTES:"); L.push(...notes); }
+  return L.join("\n");
+}
+
+function renderLedger() {
+  const s = S();
+  const cover = R.goalGap ? Math.min(1, R.totalCons / R.goalGap) : 0;
+  const leak = R.leakIdx >= 0 ? `${R.convNames[R.leakIdx]}` : "—";
+  const capTxt = { under: "Under-used", balanced: "Moderate", full: "Full", unknown: "—" }[R.capVerdict];
+  const vals = R.vals, max = Math.max(1, ...vals);
+  $("ledger").innerHTML = `
+    <div class="lcard found">
+      <span class="eyebrow">Money found so far</span>
+      <div class="big">${inr(R.totalCons)}<span style="font-size:15px;opacity:.7"> /mo</span></div>
+      <div class="sub">${inr(R.totalCons * 12)} a year, recoverable without new marketing</div>
+      ${R.goalGap ? `<div class="gapbar" role="img" aria-label="Covers ${pct(cover)} of the goal gap"><i style="width:${cover * 100}%"></i></div>
+      <div class="sub">Covers ${pct(R.totalCons / R.goalGap)} of the ${inr(R.goalGap)}/mo goal gap</div>` : `<div class="sub">Add current and desired revenue to compare with the goal.</div>`}
+    </div>
+    <div class="lcard"><h3>${esc(s.clinic.name || "Unnamed clinic")}</h3>
+      <div class="lrow"><span>Revenue now</span><span>${R.curRev ? inr(R.curRev) : "—"}</span></div>
+      <div class="lrow"><span>Target</span><span>${R.desRev ? inr(R.desRev) : "—"}</span></div>
+      <div class="lrow"><span>Biggest funnel leak</span><span>${esc(leak)}</span></div>
+      <div class="lrow"><span>Database pool</span><span>${R.dbPool ? inr(R.dbPool) : "—"}</span></div>
+      <div class="lrow"><span>Chair utilisation</span><span>${pct(R.util)} · ${capTxt}</span></div>
+    </div>
+    <div class="lcard"><h3>Top opportunities</h3>
+      ${R.active.slice(0, 4).map((o, i) => `<div class="lrow"><span>${i + 1}. ${esc(o.t)}</span><span>${inr(o.m)}</span></div>`).join("") || `<div class="lrow"><span>Fill in the funnel to rank</span><span></span></div>`}
+      ${R.top ? `<div style="margin-top:10px"><span class="pill accent">Lead with: ${esc(R.top.iv)}</span></div>` : ""}
+    </div>
+    <div class="lcard"><h3>Funnel</h3>
+      ${vals.map((v, i) => `<div style="display:grid;grid-template-columns:1fr 46px;gap:8px;align-items:center;margin:3px 0">
+        <div style="height:10px;border-radius:3px;background:var(--surface-2)"><div style="height:100%;width:${v / max * 100}%;border-radius:3px;background:${R.leakIdx >= 0 && i === R.leakIdx + 1 ? "var(--leak)" : "var(--accent)"}"></div></div>
+        <span class="num" style="font:500 12px var(--f-mono);text-align:right">${fmtN(v)}</span></div>`).join("")}
+    </div>`;
+}
+
+function renderClinicSelect() {
+  const ids = Object.keys(store.clinics);
+  $("clinicSelect").innerHTML = ids.map(id => `<option value="${id}"${id === store.current ? " selected" : ""}>${esc(store.clinics[id].clinic.name || "Unnamed clinic")}</option>`).join("");
+  $("sampleNote").hidden = !S().sample;
+}
+function renderAll() { R = calc(S()); renderClinicSelect(); renderRail(); renderSheet(); }
+
+/* ---------- Events ---------- */
+document.addEventListener("input", e => {
+  const k = e.target.dataset && e.target.dataset.k; if (!k) return;
+  const v = e.target.type === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value;
+  setPath(S(), k, v);
+  if (k === "clinic.name") renderClinicSelect();
+  if (k === "db.total" || k === "db.active") autoFillInactive();
+  save(); refreshLive(); renderRail();
+});
+let inactiveTouched = false;
+function autoFillInactive() {
+  const d = S().db; if (inactiveTouched) return;
+  if (n(d.total) > 0 && n(d.active) > 0 && document.activeElement && document.activeElement.dataset.k !== "db.inactive") {
+    d.inactive = Math.max(0, n(d.total) - n(d.active));
+    const el = $("f_db_inactive"); if (el) el.value = d.inactive;
+  }
+}
+document.addEventListener("focusin", e => { if (e.target.dataset && e.target.dataset.k === "db.inactive") inactiveTouched = true; });
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("button"); if (!t) return;
+  if (t.dataset.step != null) { go(+t.dataset.step); return; }
+  if (t.dataset.go != null) { go(+t.dataset.go); return; }
+  if (t.dataset.sys) {
+    const s = S(); s.systems[t.dataset.sys] = s.systems[t.dataset.sys] === t.dataset.v ? undefined : t.dataset.v;
+    t.parentElement.querySelectorAll("button").forEach(b => { const on = s.systems[t.dataset.sys] === b.dataset.v; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
+    save(); refreshLive(); renderRail(); return;
+  }
+  if (t.dataset.score) {
+    const s = S(); s.scores = s.scores || {}; s.scores[t.dataset.score] = s.scores[t.dataset.score] || {};
+    s.scores[t.dataset.score][t.dataset.f] = +t.dataset.v; save(); refreshLive(); return;
+  }
+  if (t.dataset.excl) { const s = S(); s.excluded = s.excluded || {}; s.excluded[t.dataset.excl] = !s.excluded[t.dataset.excl]; save(); refreshLive(); renderRail(); return; }
+  if (t.dataset.delTx != null) { S().treatments.splice(+t.dataset.delTx, 1); save(); renderSheet(); return; }
+  if (t.id === "addTx") { S().treatments.push({ name: "", consults: "", starts: "", value: "" }); save(); renderSheet(); const i = S().treatments.length - 1; const el = $("tx_n_" + i); if (el) el.focus(); return; }
+  if (t.id === "copySummary") { copy(buildSummary(), "Summary copied"); return; }
+});
+function go(i) {
+  if (i < 0 || i >= STEPS.length) return;
+  store.step = i; save(); renderRail(); renderSheet();
+  const top = $("sheet").getBoundingClientRect().top + window.scrollY - 80;
+  if (window.scrollY > top) window.scrollTo({ top, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+$("clinicSelect").addEventListener("change", e => { store.current = e.target.value; inactiveTouched = false; save(); renderAll(); });
+function newClinic() {
+  const id = "c" + Date.now(); store.clinics[id] = blankState(); store.current = id; store.step = 0; inactiveTouched = false;
+  save(); renderAll(); const el = $("f_clinic_name"); if (el) el.focus(); toast("New clinic started");
+}
+$("newClinic").addEventListener("click", newClinic);
+$("sampleNew").addEventListener("click", newClinic);
+
+let pendingDelete = 0;
+$("deleteBtn").addEventListener("click", () => {
+  const btn = $("deleteBtn");
+  if (Date.now() - pendingDelete > 4000) { pendingDelete = Date.now(); btn.textContent = "Click again to delete"; setTimeout(() => { btn.textContent = "Delete"; }, 4000); return; }
+  pendingDelete = 0; btn.textContent = "Delete";
+  delete store.clinics[store.current];
+  const ids = Object.keys(store.clinics);
+  if (ids.length) store.current = ids[ids.length - 1];
+  else { const id = "c" + Date.now(); store.clinics[id] = sampleState(); store.current = id; }
+  store.step = 0; save(); renderAll(); toast("Clinic deleted");
+});
+
+/* Export / import */
+const modal = $("modal");
+let modalMode = "import";
+$("exportBtn").addEventListener("click", () => {
+  modalMode = "export";
+  $("modalTitle").textContent = "Export clinic data";
+  $("modalText").textContent = "Copy this JSON into your CRM or notes. Paste it into Import on any device to continue.";
+  $("modalArea").value = JSON.stringify(S(), null, 2);
+  $("modalFile").hidden = true; $("modalOk").textContent = "Copy JSON";
+  modal.hidden = false; $("modalArea").select();
+});
+$("importBtn").addEventListener("click", () => {
+  modalMode = "import";
+  $("modalTitle").textContent = "Import clinic data";
+  $("modalText").textContent = "Paste exported JSON, or choose a .json file. It is added as a new clinic.";
+  $("modalArea").value = ""; $("modalFile").hidden = false; $("modalFile").value = ""; $("modalOk").textContent = "Import";
+  modal.hidden = false; $("modalArea").focus();
+});
+$("modalFile").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const rd = new FileReader(); rd.onload = () => { $("modalArea").value = rd.result; }; rd.readAsText(f);
+});
+$("modalCancel").addEventListener("click", () => { modal.hidden = true; });
+modal.addEventListener("click", e => { if (e.target === modal) modal.hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !modal.hidden) modal.hidden = true; });
+$("modalOk").addEventListener("click", () => {
+  if (modalMode === "export") { copy($("modalArea").value, "JSON copied"); return; }
+  try {
+    const data = JSON.parse($("modalArea").value);
+    if (!data || typeof data !== "object" || !data.funnel || !data.clinic) throw new Error("shape");
+    const base = blankState();
+    const merged = Object.assign(base, data, { sample: false });
+    ["clinic", "goal", "funnel", "db", "capacity", "decision"].forEach(k => { merged[k] = Object.assign(blankState()[k], data[k] || {}); });
+    const id = "c" + Date.now(); store.clinics[id] = merged; store.current = id; store.step = 0;
+    save(); renderAll(); modal.hidden = true; toast("Clinic imported");
+  } catch (err) { $("modalText").textContent = "That is not exported clinic JSON. Export from this page, then paste the whole block."; }
+});
+
+function copy(text, msg) {
+  const done = () => toast(msg);
+  try {
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, msg));
+  } catch (e) { fallbackCopy(text, msg); }
+}
+function fallbackCopy(text, msg) {
+  const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  ta.remove();
+  toast(ok ? msg : "Copy blocked: select the text and copy it manually");
+}
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2200); }
+
+/* Boot */
+load();
+store.step = Math.min(Math.max(0, n(store.step)), STEPS.length - 1);
+renderAll();
+})();
+</script>
+</body>
+</html>
